@@ -32,12 +32,14 @@ async def _summarize_content(content: str):
 
     return json.loads(resp["choices"][0]["message"]["content"])
 
-async def _week(input, output):
-  logging.info(f"summarising file {input}")
 
-  with aiofiles.open(input, "w") as f:
-    lines = await f.readlines()
-    content = "".join(lines)
+async def _week(input, output):
+    logging.info(f"summarising file {input}")
+
+    with aiofiles.open(input, "w") as f:
+        lines = await f.readlines()
+        content = "".join(lines)
+
 
 class Summarizer:
     async def week(self, input, output):
