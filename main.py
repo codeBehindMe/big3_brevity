@@ -52,15 +52,23 @@ async def _week(input, output):
     logging.info("finished")
 
 
+async def _folder(infolder, outfolder):
+    files = glob.glob(f"{infolder}/*")
+    [logging.info(f"found file: {f}") for f in files]
+
+    async with asyncio.TaskGroup() as tg:
+        tasks = [
+            tg.create_task(_week(f, f"{outfolder}/{os.path.basename(f)}.json"))
+            for f in files
+        ]
+
+
 class Summarizer:
     def week(self, input, output):
         asyncio.run(_week(input, output))
 
     def folder(self, infolder, outfolder):
-        files = glob.glob(f"{infolder}/*")
-
-        tasks = [self.week(f, f"{outfolder}/{os.path.basename(f)}.json") for f in files]
-        asyncio.gather(*tasks)
+        asyncio.run(_folder(infolder=infolder, outfolder=outfolder))
 
 
 if __name__ == "__main__":
