@@ -22,6 +22,7 @@ def __set_key():
 
 async def _summarize_content(content: str):
     __set_key()
+    logging.info("requesting summary from gpt-3.5.-turbo")
     resp = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo",
         messages=[
@@ -36,23 +37,24 @@ async def _summarize_content(content: str):
 async def _week(input, output):
     logging.info(f"summarising file {input}")
 
-    with aiofiles.open(input, "w") as f:
+    async with aiofiles.open(input, "r") as f:
         lines = await f.readlines()
         content = "".join(lines)
 
+    json_summary = await _summarize_content(content=content)
+
+    if os.path.dirname(output) != "":
+        os.makedirs(os.path.dirname(output), exist_ok=True)
+    logging.info(f"writing file to {output}")
+    async with aiofiles.open(output, "w") as f:
+        await f.write(json.dumps(json_summary))
+
+    logging.info("finished")
+
 
 class Summarizer:
-    async def week(self, input, output):
-        logging.info(f"summarizing input {input}")
-
-        with open(input, "r") as f:
-            content = "".join(f.readlines())
-
-        j = await _summarize_content(content=content)
-        if os.path.dirname(output) != "":
-            os.makedirs(os.path.dirname(output), exist_ok=True)
-        async with aiofiles.open(output, "w") as f:
-            await json.dump(j, f)
+    def week(self, input, output):
+        asyncio.run(_week(input, output))
 
     def folder(self, infolder, outfolder):
         files = glob.glob(f"{infolder}/*")
