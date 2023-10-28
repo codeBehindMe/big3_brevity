@@ -21,7 +21,6 @@ def __set_key():
 
 
 async def _summarize_content(content: str):
-    __set_key()
     logging.info("requesting summary from gpt-3.5.-turbo")
     resp = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo",
@@ -61,6 +60,22 @@ async def _folder(infolder, outfolder):
             tg.create_task(_week(f, f"{outfolder}/{os.path.basename(f)}.json"))
             for f in files
         ]
+
+
+async def _to_markdown(content: str) -> str:
+    if not input.endswith(".json"):
+        raise ValueError("expected JSON input")
+
+    logging.info("requesting markdown conversion from gpt-3.5-turbo")
+    resp = await openai.ChatCompletion.acreate(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "convert the json string into a markdown"},
+            {"role": "user", "content": content},
+        ],
+    )
+
+    return resp["choices"][0]["message"]["content"]
 
 
 class Summarizer:
