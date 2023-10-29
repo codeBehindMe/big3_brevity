@@ -149,7 +149,7 @@ async def _join(folder, out: str):
 
     combined = {}
     for week, week_plan in json_results:
-        combined[week] = week_plan
+        combined[week.upper()] = week_plan
 
     async with aiofiles.open(out, "w") as f:
         await f.write(json.dumps(combined))
