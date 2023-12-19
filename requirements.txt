@@ -1,3 +1,4 @@
 openai
 fire
 aiofiles
+google-cloud-firestore
