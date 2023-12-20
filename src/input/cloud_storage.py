@@ -41,7 +41,6 @@ class CloudStoragePlanContainer:
 
     @staticmethod
     async def _get_plan_week_obj(client: Storage, obj_name: str) -> Tuple[str, str]:
-        get_or_create_logger().info(obj_name)
         return obj_name.split("/")[1].lower(), await client.download(
             bucket=PLANS_BUCKET_NAME, object_name=obj_name
         )
@@ -69,6 +68,7 @@ class CloudStoragePlanContainer:
                             )
                         )
 
-        weeks = [t.result() for t in week_tasks]
+        for weekname, content in [t.result() for t in week_tasks]:
+            weeks[weekname] = content
 
-        return overview, weeks
+        return RawPlan(overview, **weeks)

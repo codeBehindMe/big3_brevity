@@ -29,5 +29,4 @@ class TestCloudStorage:
     async def test_get_plan(self):
         container = await CloudStoragePlanContainer.create()
 
-        plan_items = await container.get_plan("10k_run_imp")
-        # print(plan_items)
+        raw_plan = await container.get_plan("10k_run_imp")
