@@ -23,4 +23,4 @@ class TestCloudStorage:
         container = await CloudStoragePlanContainer.create()
 
         plan_items = await container.get_plan("10k_run_imp")
-        print(plan_items)
+        # print(plan_items)

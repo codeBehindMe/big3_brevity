@@ -1,4 +1,5 @@
-from typing import Final, List, Self
+import asyncio
+from typing import Dict, Final, List, Self, Tuple
 
 from gcloud.aio.storage import Blob, Bucket, Storage
 
@@ -34,15 +35,36 @@ class CloudStoragePlanContainer:
         bucket_contents = await self._get_bucket_contents()
         return list(set(map(lambda x: x.split("/")[0], bucket_contents)))
 
-    async def get_plan(self, plan_name: str) -> RawPlan:
-        blist = []
-        async with Storage() as client:
-            bucket = Bucket(client, PLANS_BUCKET_NAME)
-            for blob_name in filter(
-                lambda x: x.startswith(plan_name), self._bucket_contents
-            ):
-                blist.append(
-                    await client.download(bucket=bucket.name, object_name=blob_name)
-                )
+    @staticmethod
+    async def _get_plan_week_obj(client: Storage, obj_name: str) -> Tuple[str, str]:
+        print(obj_name)
+        return obj_name.split("/")[1].lower(), await client.download(
+            bucket=PLANS_BUCKET_NAME, object_name=obj_name
+        )
 
-            return blist
+    async def get_plan(self, plan_name: str) -> RawPlan:
+        weeks: Dict[str, str] = {}
+        overview: str = ""
+
+        async with Storage() as client:
+            blob_names = filter(
+                lambda x: x.startswith(plan_name), self._bucket_contents
+            )
+
+            async with asyncio.TaskGroup() as tg:
+                week_tasks = []
+                for b_name in blob_names:
+                    if b_name.split("/")[1].lower() == "overview":
+                        overview = await client.download(
+                            bucket=PLANS_BUCKET_NAME, object_name=b_name
+                        )
+                    else:
+                        week_tasks.append(
+                            tg.create_task(
+                                self._get_plan_week_obj(client=client, obj_name=b_name)
+                            )
+                        )
+
+        weeks = [t.result() for t in week_tasks]
+
+        return overview, weeks
