@@ -31,7 +31,7 @@ def get_or_create_logger(name: Optional[Union[str, None]] = None) -> AppLogger:
     logger.setLevel(logging.DEBUG)
 
     # Define the logging format
-    formatter = logging.Formatter("%(asctime)s::ingestion::%(levelname)s::%(message)s")
+    formatter = logging.Formatter("%(asctime)s::%(name)s::%(levelname)s::%(message)s")
 
     # Create a console handler
     console_handler = logging.StreamHandler()
