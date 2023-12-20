@@ -4,3 +4,6 @@ aiofiles
 google-cloud-firestore
 google-cloud-storage
 pytest
+isort
+black
+autoflake
