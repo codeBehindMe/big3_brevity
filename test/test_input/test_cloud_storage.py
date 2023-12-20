@@ -3,8 +3,15 @@ import asyncio
 import pytest
 
 from src.input.cloud_storage import CloudStoragePlanContainer
+from src.logger import AppLogger, get_or_create_logger
 
 
+@pytest.fixture(scope="session")
+def get_logger() -> AppLogger:
+    return get_or_create_logger("BIG3BREVITYTEST")
+
+
+@pytest.mark.usefixtures("get_logger")
 @pytest.mark.asyncio(scope="module")
 class TestCloudStorage:
     @pytest.mark.asyncio

@@ -9,7 +9,11 @@ import aiofiles
 import fire
 import openai
 
+from src.logger import get_or_create_logger
+
 mof_limiter = asyncio.Semaphore(1000)  # max open files limiter
+
+app_logger = get_or_create_logger("BIG3BREVITY")
 
 EXAMPLE_FORMAT = """{"Monday": {
     "Session": 7,
