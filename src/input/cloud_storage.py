@@ -9,9 +9,19 @@ PLANS_BUCKET_NAME: Final[str] = "big3-plans"
 
 
 class RawPlan:
+    _num_weeks: int
     def __init__(self, overview: str, **weeks: str) -> None:
         self.overview = overview
         self.weeks = weeks
+        self._num_weeks = len(self.weeks.keys())
+
+    @property
+    def num_weeks(self):
+        return self._num_weeks
+
+    def get_week(self, week_id: str) -> str:
+        return self.weeks[week_id]
+
 
 
 class CloudStoragePlanContainer:
