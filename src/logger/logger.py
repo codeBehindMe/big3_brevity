@@ -7,7 +7,7 @@ AppLogger = NewType("AppLogger", logging.Logger)
 _app_logger: Union[AppLogger, None] = None
 
 
-def get_or_create_logger(name: Optional[Union[str, None]] = "BIG3BREVITY") -> AppLogger:
+def get_or_create_logger(name: Optional[Union[str, None]] = None) -> AppLogger:
     """
     Creates a custom logger with the specified name and format.
 
