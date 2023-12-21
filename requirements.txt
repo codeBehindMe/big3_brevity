@@ -7,4 +7,5 @@ pytest
 isort
 black
 autoflake
+pytest-asyncio
 gcloud-aio-storage
