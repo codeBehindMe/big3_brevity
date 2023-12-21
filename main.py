@@ -66,16 +66,14 @@ def _uppercase_keys(d: dict) -> dict:
 
 async def _summarize_content(content: str):
     logging.info("requesting summary from gpt-3.5.-turbo")
-    resp = await openai.ChatCompletion.acreate(
-        model="gpt-3.5-turbo",
-        messages=[
-            {
-                "role": "system",
-                "content": f"summarise workout plan text into a JSON; here's an example of the required format style {EXAMPLE_FORMAT}",
-            },
-            {"role": "user", "content": content},
-        ],
-    )
+    resp = await aclient.chat.completions.create(model="gpt-3.5-turbo",
+    messages=[
+        {
+            "role": "system",
+            "content": f"summarise workout plan text into a JSON; here's an example of the required format style {EXAMPLE_FORMAT}",
+        },
+        {"role": "user", "content": content},
+    ])
 
     d = json.loads(resp["choices"][0]["message"]["content"])
 
@@ -117,13 +115,11 @@ async def _to_markdown(content: str) -> str:
         raise ValueError("expected JSON input")
 
     logging.info("requesting markdown conversion from gpt-3.5-turbo")
-    resp = await openai.ChatCompletion.acreate(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "convert the json string into a markdown"},
-            {"role": "user", "content": content},
-        ],
-    )
+    resp = await aclient.chat.completions.create(model="gpt-3.5-turbo",
+    messages=[
+        {"role": "system", "content": "convert the json string into a markdown"},
+        {"role": "user", "content": content},
+    ])
 
     return resp["choices"][0]["message"]["content"]
 

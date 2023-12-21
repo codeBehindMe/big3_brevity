@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from src.input.cloud_storage import CloudStoragePlanContainer
+from src.plan.cloud_storage import CloudStoragePlanContainer
 from src.logger import AppLogger, get_or_create_logger
 
 

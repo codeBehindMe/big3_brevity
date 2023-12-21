@@ -4,8 +4,10 @@ from typing import Dict, Final, List, Self, Tuple
 from gcloud.aio.storage import Blob, Bucket, Storage
 
 from src.logger import AppLogger, get_or_create_logger
+from src.processor.oai import GPTPlanProcessor
 
 PLANS_BUCKET_NAME: Final[str] = "big3-plans"
+import os
 
 
 class RawPlan:
@@ -28,14 +30,14 @@ class RawPlan:
 class CloudStoragePlanContainer:
     _plan_names: List[str]
     _bucket_contents: List[str]
-    _app_logger: AppLogger
+    logger: AppLogger
 
     @classmethod
     async def create(cls) -> Self:
         inst = cls()
         inst._bucket_contents = await inst._get_bucket_contents()
         inst._plan_names = await inst._get_available_plan_names()
-        inst._app_logger = get_or_create_logger()
+        inst.logger = get_or_create_logger()
         return inst
 
     @property
@@ -57,6 +59,7 @@ class CloudStoragePlanContainer:
         )
 
     async def get_plan(self, plan_name: str) -> RawPlan:
+        proc = GPTPlanProcessor(os.environ["OAI_TOKEN"])
         weeks: Dict[str, str] = {}
         overview: str = ""
 
@@ -73,6 +76,7 @@ class CloudStoragePlanContainer:
                             bucket=PLANS_BUCKET_NAME, object_name=b_name
                         )
                     else:
+                        self.logger.info("getting raw week")
                         week_tasks.append(
                             tg.create_task(
                                 self._get_plan_week_obj(client=client, obj_name=b_name)
@@ -80,6 +84,7 @@ class CloudStoragePlanContainer:
                         )
 
         for weekname, content in [t.result() for t in week_tasks]:
+            await proc.summarise_week(content=content.decode("utf-8"))
             weeks[weekname] = content
 
         return RawPlan(plan_name, overview, **weeks)
