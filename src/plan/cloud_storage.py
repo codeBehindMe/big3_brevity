@@ -53,10 +53,12 @@ class CloudStoragePlanContainer:
         return list(set(map(lambda x: x.split("/")[0], bucket_contents)))
 
     @staticmethod
-    async def _get_plan_week_obj(client: Storage, obj_name: str) -> Tuple[str, str]:
-        return obj_name.split("/")[1].lower(), await client.download(
-            bucket=PLANS_BUCKET_NAME, object_name=obj_name
-        )
+    async def _get_plan_week_obj(client: Storage,proc: GPTPlanProcessor,  obj_name: str) -> Tuple[str, str]:
+        print(f"downloading {obj_name}")
+        content = await client.download(bucket=PLANS_BUCKET_NAME, object_name=obj_name)
+        print(f"summarising {obj_name}")
+        d = await proc.summarise_week(content.decode("utf-8"))
+        return obj_name.split("/")[1].lower(), d
 
     async def get_plan(self, plan_name: str) -> RawPlan:
         proc = GPTPlanProcessor(os.environ["OAI_TOKEN"])
@@ -79,12 +81,9 @@ class CloudStoragePlanContainer:
                         self.logger.info("getting raw week")
                         week_tasks.append(
                             tg.create_task(
-                                self._get_plan_week_obj(client=client, obj_name=b_name)
+                                self._get_plan_week_obj(client=client,proc=proc, obj_name=b_name)
                             )
                         )
 
         for weekname, content in [t.result() for t in week_tasks]:
-            await proc.summarise_week(content=content.decode("utf-8"))
-            weeks[weekname] = content
-
-        return RawPlan(plan_name, overview, **weeks)
+            pass
