@@ -56,7 +56,10 @@ async def process_week_blob(
 
 
 async def process_plan(
-    plan_name: str, bucket_contents: List[str], processor: GPTPlanProcessor
+    plan_name: str,
+    bucket_contents: List[str],
+    processor: GPTPlanProcessor,
+    firestore: Firestore,
 ):
     async with Storage() as client:
         plan_blobs = filter(lambda x: x.startswith(plan_name), bucket_contents)
@@ -73,13 +76,13 @@ async def process_plan(
                         tg.create_task(process_week_blob(blob, client, processor))
                     )
 
-    print(
-        Plan(
-            name=plan_name,
-            overview=overview.decode("utf-8"),
-            weeks=[t.result() for t in week_proc_tasks],
-        ).to_dict()
+    p = Plan(
+        name=plan_name,
+        overview=overview.decode("utf-8"),
+        weeks=[t.result() for t in week_proc_tasks],
     )
+
+    await firestore.add_document("plans", p.name, p.to_dict())
 
 
 async def process_plans_in_bucket():
@@ -91,9 +94,10 @@ async def process_plans_in_bucket():
 
 async def main():
     proc = GPTPlanProcessor(os.environ["OAI_TOKEN"])
+    f_store = Firestore("devfsdb")
     async with Storage() as client:
         bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
-    await process_plan("10k_run_imp", bucket_contents, proc)
+    await process_plan("10k_run_imp", bucket_contents, proc, f_store)
 
 
 if __name__ == "__main__":
