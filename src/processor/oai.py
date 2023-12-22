@@ -1,10 +1,13 @@
 import json
+from typing import Dict, Final
+
 from openai import AsyncOpenAI
 
-from typing import Final, Dict
 from src.logger import get_or_create_logger
 
-EXAMPLE_FORMAT : Final[str] = """{"Monday": {
+EXAMPLE_FORMAT: Final[
+    str
+] = """{"Monday": {
     "Session": 7,
     "Objective": "Strength",
     "Warm up": [
@@ -30,9 +33,9 @@ EXAMPLE_FORMAT : Final[str] = """{"Monday": {
     ],
     "Comments": "Use your SESSION 1 Strength Assessment results to calculate today\u2019s loading for the Back Squat, Bench Press and Dead Lift, and the reps for the Pull Ups."}}
     """
-    
+
+
 class GPTPlanProcessor:
-    
     def __init__(self, api_key: str) -> None:
         self.aclient = AsyncOpenAI(api_key=api_key)
         self.logger = get_or_create_logger()
@@ -49,16 +52,16 @@ class GPTPlanProcessor:
 
     async def summarise_week(self, content: str) -> Dict:
         self.logger.info("summarising week")
-        resp = await self.aclient.chat.completions.create(model="gpt-3.5-turbo",
-        messages=[
-            {
-                "role": "system",
-                "content": f"summarise workout plan text into a JSON; here's an example of the required format style {EXAMPLE_FORMAT}",
-            },
-            {"role": "user", "content": content},
-        ])
+        resp = await self.aclient.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"summarise workout plan text into a JSON; here's an example of the required format style {EXAMPLE_FORMAT}",
+                },
+                {"role": "user", "content": content},
+            ],
+        )
 
         d = json.loads(resp.choices[0].message.content)
         return GPTPlanProcessor._uppercase_keys(d)
-            
-        

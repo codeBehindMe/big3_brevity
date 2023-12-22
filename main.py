@@ -4,25 +4,31 @@ import json
 import logging
 import os
 import pathlib
+from dataclasses import dataclass
+from typing import Dict, Final, List
 
 import aiofiles
 import fire
 import openai
-from gcloud.aio.storage import Storage, Bucket
+from gcloud.aio.storage import Bucket, Storage
 
+from firestore import Firestore
 from src.logger import get_or_create_logger
-from typing import List, Final, Dict
-from dataclasses import dataclass
 from src.processor.oai import GPTPlanProcessor
 
 mof_limiter = asyncio.Semaphore(1000)  # max open files limiter
 
-PLANS_BUCKET_NAME : Final[str] = "big3-plans"
+PLANS_BUCKET_NAME: Final[str] = "big3-plans"
+
 
 @dataclass
 class Week:
     name: str
     data: Dict
+
+    def to_dict(self) -> Dict:
+        return {"name": self.name, "days": self.data}
+
 
 @dataclass
 class Plan:
@@ -30,16 +36,28 @@ class Plan:
     overview: str
     weeks: List[Week]
 
+    def to_dict(self) -> Dict:
+        return {
+            "name": self.name,
+            "overview": self.overview,
+            "weeks": [w.to_dict() for w in self.weeks],
+        }
 
-async def process_week_blob(week_blob_name: str, client: Storage, proc: GPTPlanProcessor):
+
+async def process_week_blob(
+    week_blob_name: str, client: Storage, proc: GPTPlanProcessor
+):
     week_name = week_blob_name.split("/")[1]
-    blob_content = await client.download(bucket=PLANS_BUCKET_NAME, object_name=week_blob_name)
+    blob_content = await client.download(
+        bucket=PLANS_BUCKET_NAME, object_name=week_blob_name
+    )
     summarised_week = await proc.summarise_week(blob_content.decode("utf-8"))
     return Week(name=week_name, data=summarised_week)
-    
 
 
-async def process_plan(plan_name: str, bucket_contents: List[str], processor: GPTPlanProcessor):
+async def process_plan(
+    plan_name: str, bucket_contents: List[str], processor: GPTPlanProcessor
+):
     async with Storage() as client:
         plan_blobs = filter(lambda x: x.startswith(plan_name), bucket_contents)
 
@@ -52,19 +70,19 @@ async def process_plan(plan_name: str, bucket_contents: List[str], processor: GP
                     )
                 else:
                     week_proc_tasks.append(
-                        tg.create_task(
-                            process_week_blob(blob, client, processor)
-                        )
+                        tg.create_task(process_week_blob(blob, client, processor))
                     )
-                    break
 
-    week : Week
-    for week in [t.result() for t in week_proc_tasks]:
-        print(week.data)
-        
-         
+    print(
+        Plan(
+            name=plan_name,
+            overview=overview.decode("utf-8"),
+            weeks=[t.result() for t in week_proc_tasks],
+        ).to_dict()
+    )
+
+
 async def process_plans_in_bucket():
-
     async with Storage() as client:
         bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
 
@@ -74,8 +92,9 @@ async def process_plans_in_bucket():
 async def main():
     proc = GPTPlanProcessor(os.environ["OAI_TOKEN"])
     async with Storage() as client:
-            bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
-    await process_plan("10k_run_imp", bucket_contents,proc )
+        bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
+    await process_plan("10k_run_imp", bucket_contents, proc)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
