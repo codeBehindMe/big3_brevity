@@ -3,7 +3,7 @@ from typing import Dict, Final
 
 from openai import AsyncOpenAI
 
-from src.logger import get_or_create_logger
+from logger import get_or_create_logger
 
 EXAMPLE_FORMAT: Final[
     str

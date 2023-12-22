@@ -1,24 +1,19 @@
 import asyncio
-import glob
-import json
-import logging
 import os
-import pathlib
 from dataclasses import dataclass
 from typing import Dict, Final, List
 
-import aiofiles
-import fire
-import openai
 from gcloud.aio.storage import Bucket, Storage
 
 from firestore import Firestore
-from src.logger import get_or_create_logger
-from src.processor.oai import GPTPlanProcessor
+from logger import get_or_create_logger
+from oai import GPTPlanProcessor
 
 mof_limiter = asyncio.Semaphore(1000)  # max open files limiter
 
 PLANS_BUCKET_NAME: Final[str] = "big3-plans"
+
+app_logger = get_or_create_logger()
 
 
 @dataclass
@@ -47,10 +42,14 @@ class Plan:
 async def process_week_blob(
     week_blob_name: str, client: Storage, proc: GPTPlanProcessor
 ):
+    app_logger.info(f"processing week {week_blob_name}")
     week_name = week_blob_name.split("/")[1]
+
+    app_logger.debug(f"downloading blob for processing {week_blob_name}")
     blob_content = await client.download(
         bucket=PLANS_BUCKET_NAME, object_name=week_blob_name
     )
+    app_logger.debug(f"summarising week {week_blob_name}")
     summarised_week = await proc.summarise_week(blob_content.decode("utf-8"))
     return Week(name=week_name, data=summarised_week)
 
@@ -61,6 +60,7 @@ async def process_plan(
     processor: GPTPlanProcessor,
     firestore: Firestore,
 ):
+    app_logger.info(f"starting processing plan {plan_name}")
     async with Storage() as client:
         plan_blobs = filter(lambda x: x.startswith(plan_name), bucket_contents)
 
@@ -68,6 +68,7 @@ async def process_plan(
             week_proc_tasks = []
             for blob in plan_blobs:
                 if blob.split("/")[1].lower() == "overview.md":
+                    app_logger.debug(f"downloading overview for {plan_name}")
                     overview = await client.download(
                         bucket=PLANS_BUCKET_NAME, object_name=blob
                     )
@@ -81,23 +82,50 @@ async def process_plan(
         overview=overview.decode("utf-8"),
         weeks=[t.result() for t in week_proc_tasks],
     )
+    app_logger.info(f"finished creating plan for {p.plan_name}")
 
+    app_logger.info(f"adding plan {p.plan_name} to firestore")
     await firestore.add_document("plans", p.name, p.to_dict())
 
 
-async def process_plans_in_bucket():
+async def process_plans_in_bucket(oai_token: str, database_name: str):
+    app_logger.info(f"getting available plans in {PLANS_BUCKET_NAME}")
     async with Storage() as client:
         bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
+    plan_names = list(set(map(lambda x: x.split("/")[0], bucket_contents)))
+    app_logger.info(f"found plans: {plan_names}")
 
-    plan_names = list(set(map(lambda x: x.split("/")[1], bucket_contents)))
+    app_logger.info(f"processing plans")
 
+    app_logger.debug(f"creating processor")
+    proc = GPTPlanProcessor(oai_token)
+
+    app_logger.debug(f"creating firestore client for database {database_name}")
+    f_store = Firestore(database_name)
+    async with asyncio.TaskGroup() as tg:
+        tasks = [
+            tg.create_task(
+                process_plan(
+                    plan_name=plan,
+                    bucket_contents=bucket_contents,
+                    processor=proc,
+                    firestore=f_store,
+                )
+            )
+            for plan in plan_names
+        ]
+    [t.result() for t in tasks]
 
 async def main():
-    proc = GPTPlanProcessor(os.environ["OAI_TOKEN"])
-    f_store = Firestore("devfsdb")
-    async with Storage() as client:
-        bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
-    await process_plan("10k_run_imp", bucket_contents, proc, f_store)
+    # proc = GPTPlanProcessor(os.environ["OAI_TOKEN"])
+    # f_store = Firestore("devfsdb")
+    # async with Storage() as client:
+    #     bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
+    # await process_plan("10k_run_imp", bucket_contents, proc, f_store)
+    oai_token = os.environ["OAI_TOKEN"]
+    database_name = os.environ["TARGET_DATABASE"]
+
+    print(await process_plans_in_bucket(oai_token, database_name))
 
 
 if __name__ == "__main__":
