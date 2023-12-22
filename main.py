@@ -8,166 +8,74 @@ import pathlib
 import aiofiles
 import fire
 import openai
+from gcloud.aio.storage import Storage, Bucket
 
 from src.logger import get_or_create_logger
+from typing import List, Final, Dict
+from dataclasses import dataclass
+from src.processor.oai import GPTPlanProcessor
 
 mof_limiter = asyncio.Semaphore(1000)  # max open files limiter
 
-app_logger = get_or_create_logger("BIG3BREVITY")
+PLANS_BUCKET_NAME : Final[str] = "big3-plans"
 
-EXAMPLE_FORMAT = """{"Monday": {
-    "Session": 7,
-    "Objective": "Strength",
-    "Warm up": [
-      "3 Rounds",
-      "Barbell Complex @ 45/65#",
-      "6x Hand Release Push Ups",
-      "Instep Stretch",
-      "5x Shoulder Dislocates"
-    ],
-    "Training": [
-      "8x Back Squat @ 50% 1RM, then \u2026. 6x Back Squat @ 70% 1RM, then \u2026.",
-      "5 Rounds, Every 90 Seconds:",
-      "4x Back Squat @ 85% 1RM",
-      "8x Bench Press @ 50% 1RM, then .... 6x Bench Press @ 70% 1RM, then \u2026.",
-      "5 Rounds, Every 90 Seconds:",
-      "4x Bench Press @ 85% 1RM",
-      "8x Dead Lift @ 50% 1RM, then \u2026 6x Dead Lift @ 70% 1RM, then \u2026",
-      "5 Rounds, Every 90 Seconds:",
-      "4x Dead Lift @ 85% 1RM",
-      "5 Rounds, Every 90 Seconds",
-      "35% Max Rep Pull Ups",
-      "Foam Roll Legs, Low Back"
-    ],
-    "Comments": "Use your SESSION 1 Strength Assessment results to calculate today\u2019s loading for the Back Squat, Bench Press and Dead Lift, and the reps for the Pull Ups."
-  }}"""
+@dataclass
+class Week:
+    name: str
+    data: Dict
 
-__key_set = False
-
-logging.basicConfig()
-logging.getLogger().setLevel(logging.INFO)
+@dataclass
+class Plan:
+    name: str
+    overview: str
+    weeks: List[Week]
 
 
-def __set_key():
-    global __key_set
-    if not __key_set:
-        with open(".key", "r") as f:
-            openai.api_key = f.readline()
+async def process_week_blob(week_blob_name: str, client: Storage, proc: GPTPlanProcessor):
+    week_name = week_blob_name.split("/")[1]
+    blob_content = await client.download(bucket=PLANS_BUCKET_NAME, object_name=week_blob_name)
+    summarised_week = await proc.summarise_week(blob_content.decode("utf-8"))
+    return Week(name=week_name, data=summarised_week)
+    
 
 
-def _uppercase_keys(d: dict) -> dict:
-    ud = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            v = _uppercase_keys(v)
-        ud[k.upper()] = v
-    return ud
+async def process_plan(plan_name: str, bucket_contents: List[str], processor: GPTPlanProcessor):
+    async with Storage() as client:
+        plan_blobs = filter(lambda x: x.startswith(plan_name), bucket_contents)
+
+        async with asyncio.TaskGroup() as tg:
+            week_proc_tasks = []
+            for blob in plan_blobs:
+                if blob.split("/")[1].lower() == "overview.md":
+                    overview = await client.download(
+                        bucket=PLANS_BUCKET_NAME, object_name=blob
+                    )
+                else:
+                    week_proc_tasks.append(
+                        tg.create_task(
+                            process_week_blob(blob, client, processor)
+                        )
+                    )
+                    break
+
+    week : Week
+    for week in [t.result() for t in week_proc_tasks]:
+        print(week.data)
+        
+         
+async def process_plans_in_bucket():
+
+    async with Storage() as client:
+        bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
+
+    plan_names = list(set(map(lambda x: x.split("/")[1], bucket_contents)))
 
 
-async def _summarize_content(content: str):
-    logging.info("requesting summary from gpt-3.5.-turbo")
-    resp = await aclient.chat.completions.create(model="gpt-3.5-turbo",
-    messages=[
-        {
-            "role": "system",
-            "content": f"summarise workout plan text into a JSON; here's an example of the required format style {EXAMPLE_FORMAT}",
-        },
-        {"role": "user", "content": content},
-    ])
-
-    d = json.loads(resp["choices"][0]["message"]["content"])
-
-    return _uppercase_keys(d)
-
-
-async def _week(input, output):
-    logging.info(f"summarising file {input}")
-
-    async with aiofiles.open(input, "r") as f:
-        lines = await f.readlines()
-        content = "".join(lines)
-
-    json_summary = await _summarize_content(content=content)
-
-    if os.path.dirname(output) != "":
-        os.makedirs(os.path.dirname(output), exist_ok=True)
-    logging.info(f"writing file to {output}")
-    async with aiofiles.open(output, "w") as f:
-        await f.write(json.dumps(json_summary))
-
-    logging.info("finished")
-
-
-async def _folder(infolder, outfolder):
-    # FIXME: Remember to limit the num open files
-    files = glob.glob(f"{infolder}/*")
-    [logging.info(f"found file: {f}") for f in files]
-
-    async with asyncio.TaskGroup() as tg:
-        tasks = [
-            tg.create_task(_week(f, f"{outfolder}/{os.path.basename(f)}.json"))
-            for f in files
-        ]
-
-
-async def _to_markdown(content: str) -> str:
-    if not input.endswith(".json"):
-        raise ValueError("expected JSON input")
-
-    logging.info("requesting markdown conversion from gpt-3.5-turbo")
-    resp = await aclient.chat.completions.create(model="gpt-3.5-turbo",
-    messages=[
-        {"role": "system", "content": "convert the json string into a markdown"},
-        {"role": "user", "content": content},
-    ])
-
-    return resp["choices"][0]["message"]["content"]
-
-
-async def _read_week(path: str) -> str:
-    logging.info(f"reading file {path}")
-    async with mof_limiter:
-        async with aiofiles.open(path, "r") as f:
-            lines = await f.read()
-            return pathlib.Path(path).stem, "".join(lines)
-
-
-async def _join(folder, out: str):
-    files = glob.glob(f"{folder}/*.json")
-    (logging.info(f"found file: {f}") for f in files)
-
-    # FIXME: Extend taskgroup for a nicer syntax to get results
-    async with asyncio.TaskGroup() as tg:
-        tasks = [tg.create_task(_read_week(f)) for f in files]
-
-    results = [t.result() for t in tasks]
-
-    json_results = []
-
-    for x, y in results:
-        json_results.append((x, json.loads(y)))
-
-    combined = {}
-    for week, week_plan in json_results:
-        combined[week.upper()] = week_plan
-
-    async with aiofiles.open(out, "w") as f:
-        await f.write(json.dumps(combined))
-
-    logging.info("completed weeks")
-
-
-class Summarizer:
-    def week(self, input, output):
-        asyncio.run(_week(input, output))
-
-    def folder(self, infolder, outfolder):
-        asyncio.run(_folder(infolder=infolder, outfolder=outfolder))
-
-    def join(self, folder: str, out: str):
-        asyncio.run(_join(folder=folder, out=out))
-
+async def main():
+    proc = GPTPlanProcessor(os.environ["OAI_TOKEN"])
+    async with Storage() as client:
+            bucket_contents = await Bucket(client, PLANS_BUCKET_NAME).list_blobs()
+    await process_plan("10k_run_imp", bucket_contents,proc )
 
 if __name__ == "__main__":
-    __set_key()
-    fire.Fire(Summarizer)
+    asyncio.run(main())
