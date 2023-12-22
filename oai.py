@@ -34,6 +34,8 @@ EXAMPLE_FORMAT: Final[
     "Comments": "Use your SESSION 1 Strength Assessment results to calculate today\u2019s loading for the Back Squat, Bench Press and Dead Lift, and the reps for the Pull Ups."}}
     """
 
+app_logger = get_or_create_logger()
+
 
 class GPTPlanProcessor:
     def __init__(self, api_key: str) -> None:
@@ -63,5 +65,10 @@ class GPTPlanProcessor:
             ],
         )
 
-        d = json.loads(resp.choices[0].message.content)
+        try:
+            summarised_content = resp.choices[0].message.content
+            d = json.loads(summarised_content)
+        except json.JSONDecodeError as e:
+            app_logger.error(f"could not parse json on content\n{summarised_content}\n")
+            raise e
         return GPTPlanProcessor._uppercase_keys(d)
